@@ -1,0 +1,8 @@
+/* Importa o motor do Tailwind v4 e carrega os tokens centralizados antes de aplicar estilos globais */
+@import "tailwindcss";
+@config "../tailwind.config.js";
+
+/* Aplica os tokens de fundo e tipografia globalmente para sustentar a Hierarquia Visual desde o carregamento inicial */
+body {
+  @apply bg-fundo text-textoCorpo font-sans antialiased;
+}

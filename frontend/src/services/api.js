@@ -1,27 +1,34 @@
-// Isolamento da camada "Frameworks & Drivers" para requisições HTTP.
-const BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+// Isolamento da camada de infraestrutura HTTP para que os componentes visuais 
+// dependam apenas de contratos abstratos de serviço, respeitando a Regra da Dependência.
+const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
-export const httpClient = async (endpoint, options = {}) => {
-  const defaultHeaders = {
-    'Content-Type': 'application/json',
-  };
+export async function fetchApi(endpoint, options = {}) {
+  const config = { ...options };
+  const headers = { ...config.headers };
+
+  // Quando o corpo é FormData (upload de imagem), o navegador precisa omitir o Content-Type 
+  // manual para calcular e injetar automaticamente o boundary do multipart/form-data.
+  if (!(config.body instanceof FormData)) {
+    headers["Content-Type"] = headers["Content-Type"] || "application/json";
+  }
 
   const response = await fetch(`${BASE_URL}${endpoint}`, {
-    ...options,
-    headers: { ...defaultHeaders, ...options.headers },
+    ...config,
+    headers,
   });
 
   if (!response.ok) {
-    // A extração do erro deve ser tratada aqui para garantir que a UI
-    // consuma uma exceção limpa e previsível para suas máquinas de estado.
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || `Erro HTTP: ${response.status}`);
+    // Padroniza a captura de exceções de domínio vindas da API para alimentar a Máquina de Estados da UI.
+    const erroJson = await response.json().catch(() => ({}));
+    throw new Error(erroJson.message || "Erro na comunicacao com o servidor.");
   }
 
-  // Respostas 204 (No Content) não devem tentar parsear JSON
   if (response.status === 204) {
-    return null; 
+    return null;
   }
 
   return response.json();
-};
+}
+
+// Mantido como alias para retrocompatibilidade caso algum componente auxiliar ainda referencie httpClient.
+export const httpClient = fetchApi;

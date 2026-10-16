@@ -1,15 +1,18 @@
 class DominioException(Exception):
-    """Classe base para exceções de regras de negócio."""
+    """Excecao base para violacoes de regras de negocio empresariais."""
     pass
+
 
 class ConcorrenciaSolicitacaoException(DominioException):
-    """Lançada quando ocorre uma race condition (bloqueio otimista) ao atualizar uma solicitação."""
+    """Lancada quando outra transacao altera o estado da solicitacao simultaneamente."""
     pass
+
 
 class TransicaoStatusInvalidaException(DominioException):
-    """Lançada quando um fluxo de estado não permitido é tentado."""
+    """Lancada quando uma mudanca de estado viola o ciclo de vida definido no dominio."""
     pass
 
+
 class RegraNegocioException(DominioException):
-    """Lançada quando uma validação de entidade ou regra corporativa falha."""
+    """Lancada quando invariantes obrigatorios de uma entidade nao sao atendidos."""
     pass

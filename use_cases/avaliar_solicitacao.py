@@ -1,36 +1,57 @@
 import uuid
+from typing import List
 from domain.entities import StatusSolicitacao
-from use_cases.interfaces.solicitacao_repository_interface import SolicitacaoRepositoryInterface
+from use_cases.interfaces.solicitacao_repository_interface import (
+    SolicitacaoRepositoryInterface,
+    SolicitacaoParaAvaliacaoDTO
+)
 from use_cases.interfaces.animal_repository_interface import AnimalRepositoryInterface
 
+MOTIVO_RECUSA_AUTOMATICA_ADOCAO = "O animal ja foi adotado em outra solicitacao aprovada."
+
+
 class AvaliarSolicitacao:
-    def __init__(self, solicitacao_repository: SolicitacaoRepositoryInterface, animal_repository: AnimalRepositoryInterface):
-        self.solicitacao_repository = solicitacao_repository
-        self.animal_repository = animal_repository
+    def __init__(
+        self,
+        repositorio_solicitacao: SolicitacaoRepositoryInterface,
+        repositorio_animal: AnimalRepositoryInterface
+    ):
+        self.repositorio_solicitacao = repositorio_solicitacao
+        self.repositorio_animal = repositorio_animal
+
+    def listar_pendentes(self) -> List[SolicitacaoParaAvaliacaoDTO]:
+        return self.repositorio_solicitacao.listar_por_status(StatusSolicitacao.PENDENTE)
 
     def executar(self, solicitacao_id: uuid.UUID, aprovar: bool) -> None:
-        solicitacao = self.solicitacao_repository.buscar_por_id(solicitacao_id)
-        
-        # Armazena o status original para controle de concorrência no adaptador
-        status_anterior = solicitacao.status
-        
+        solicitacao = self.repositorio_solicitacao.buscar_por_id(solicitacao_id)
+        animal = self.repositorio_animal.buscar_por_id(solicitacao.animal_id)
+        status_original_no_banco = solicitacao.status
+
+        # Regra: se a solicitacao estava PENDENTE, o ato de avaliar inicia a analise do protetor
+        # e coloca o animal EM_PROCESSO antes da decisao final.
+        if solicitacao.status == StatusSolicitacao.PENDENTE:
+            solicitacao.iniciar_analise()
+            if animal.esta_disponivel():
+                animal.marcar_em_processo()
+
         if aprovar:
             solicitacao.aprovar()
         else:
             solicitacao.recusar()
 
-        # Tenta persistir a mudança de status passando a responsabilidade do lock pro repository
-        self.solicitacao_repository.salvar_avaliacao(solicitacao, status_anterior)
+        self.repositorio_solicitacao.salvar_avaliacao(
+            solicitacao=solicitacao,
+            status_anterior=status_original_no_banco
+        )
 
-        # Regra: Quando aprovada, o animal muda de status e concorrência é encerrada[cite: 1]
+        # Nota Arquitetural obrigatoria do Blueprint: quando uma solicitacao e APROVADA,
+        # o animal passa para ADOTADO e todas as outras solicitacoes PENDENTES ou EM_ANALISE
+        # do mesmo animal transicionam para RECUSADA automaticamente.
         if aprovar:
-            animal = self.animal_repository.buscar_por_id(solicitacao.animal_id)
             animal.marcar_adotado()
-            self.animal_repository.salvar(animal)
-            
-            motivo_recusa = "O animal já foi adotado por outra pessoa."
-            self.solicitacao_repository.recusar_outras_solicitacoes(
-                animal_id=solicitacao.animal_id, 
-                solicitacao_aprovada_id=solicitacao.id, 
-                motivo=motivo_recusa
+            self.repositorio_animal.salvar(animal)
+            self.repositorio_solicitacao.recusar_outras_solicitacoes_do_animal(
+                animal_id=solicitacao.animal_id,
+                solicitacao_aprovada_id=solicitacao.id,
+                motivo_recusa=MOTIVO_RECUSA_AUTOMATICA_ADOCAO
             )
